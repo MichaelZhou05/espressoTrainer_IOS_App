@@ -52,6 +52,22 @@ enum RoastLevel: String, CaseIterable, Codable {
     case dark = "Dark"
 }
 
+struct FlavorProfile: Codable {
+    let x: Double // -1.0 (sour) to 1.0 (bitter)
+    let y: Double // -1.0 (light) to 1.0 (dark)
+    
+    init(x: Double = 0.0, y: Double = 0.0) {
+        self.x = max(-1.0, min(1.0, x))
+        self.y = max(-1.0, min(1.0, y))
+    }
+    
+    var description: String {
+        let horizontalDesc = x < -0.3 ? "Sour" : x > 0.3 ? "Bitter" : "Balanced"
+        let verticalDesc = y < -0.3 ? "Light" : y > 0.3 ? "Dark" : "Medium"
+        return "\(horizontalDesc), \(verticalDesc)"
+    }
+}
+
 struct EspressoShot: Identifiable, Codable {
     let id: UUID
     let date: Date
@@ -60,13 +76,13 @@ struct EspressoShot: Identifiable, Codable {
     let dose: Double
     let yield: Double
     let shotTime: Double
-    let tasteNotes: String
+    let flavorProfile: FlavorProfile
     
     var extractionRatio: Double {
         return yield / dose
     }
     
-    init(date: Date, grindSetting: Double, coffeeBean: CoffeeBean, dose: Double, yield: Double, shotTime: Double, tasteNotes: String) {
+    init(date: Date, grindSetting: Double, coffeeBean: CoffeeBean, dose: Double, yield: Double, shotTime: Double, flavorProfile: FlavorProfile) {
         self.id = UUID()
         self.date = date
         self.grindSetting = grindSetting
@@ -74,7 +90,7 @@ struct EspressoShot: Identifiable, Codable {
         self.dose = dose
         self.yield = yield
         self.shotTime = shotTime
-        self.tasteNotes = tasteNotes
+        self.flavorProfile = flavorProfile
     }
 }
 
@@ -146,7 +162,7 @@ class ShotCreationState: ObservableObject {
     @Published var dose: String = ""
     @Published var shotTime: Double = 0
     @Published var yield: String = ""
-    @Published var tasteNotes: String = ""
+    @Published var flavorProfile: FlavorProfile = FlavorProfile()
     @Published var isTimerRunning: Bool = false
     @Published var timer: Timer?
     
@@ -156,7 +172,7 @@ class ShotCreationState: ObservableObject {
         dose = ""
         shotTime = 0
         yield = ""
-        tasteNotes = ""
+        flavorProfile = FlavorProfile()
         isTimerRunning = false
         stopTimer()
     }
@@ -190,7 +206,7 @@ class ShotCreationState: ObservableObject {
             dose: doseValue,
             yield: yieldValue,
             shotTime: shotTime,
-            tasteNotes: tasteNotes
+            flavorProfile: flavorProfile
         )
     }
 }
@@ -598,26 +614,28 @@ struct ChooseBeanView: View {
                     }
                     .padding()
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(beanManager.beans) { bean in
-                                BeanRowView(
-                                    bean: bean,
-                                    isSelected: state.selectedBean?.id == bean.id,
-                                    onSelect: {
-                                        state.selectedBean = bean
-                                    },
-                                    onDelete: {
-                                        beanManager.deleteBean(bean)
-                                        if state.selectedBean?.id == bean.id {
-                                            state.selectedBean = nil
-                                        }
+                    List {
+                        ForEach(beanManager.beans) { bean in
+                            BeanRowView(
+                                bean: bean,
+                                isSelected: state.selectedBean?.id == bean.id,
+                                onSelect: {
+                                    state.selectedBean = bean
+                                }
+                            )
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button("Delete") {
+                                    beanManager.deleteBean(bean)
+                                    if state.selectedBean?.id == bean.id {
+                                        state.selectedBean = nil
                                     }
-                                )
+                                }
+                                .tint(.red)
                             }
                         }
                     }
                     .frame(maxHeight: 300)
+                    .listStyle(.plain)
                 }
                 
                 Button(action: { showingAddBean = true }) {
@@ -663,7 +681,6 @@ struct BeanRowView: View {
     let bean: CoffeeBean
     let isSelected: Bool
     let onSelect: () -> Void
-    let onDelete: () -> Void
     
     var body: some View {
         HStack {
@@ -703,21 +720,14 @@ struct BeanRowView: View {
             
             Spacer()
             
-            HStack(spacing: 8) {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                        .font(.title3)
-                }
-                
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .gray)
-                    .font(.title2)
-            }
+            // Only show selection indicator, no delete button
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundColor(isSelected ? .blue : .gray)
+                .font(.title2)
         }
-        .padding()
-        .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-        .cornerRadius(12)
+        .padding(.vertical, 4)
+        .background(isSelected ? Color.blue.opacity(0.1) : Color.clear)
+        .cornerRadius(8)
         .onTapGesture {
             onSelect()
         }
@@ -805,41 +815,48 @@ struct DoseView: View {
     let onBack: () -> Void
     
     var body: some View {
-        VStack(spacing: 30) {
-            HeaderView(title: "Coffee Dose", step: 3, totalSteps: 6)
-            
-            VStack(spacing: 20) {
-                Text("How much coffee did you use?")
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+        ZStack {
+            VStack(spacing: 30) {
+                HeaderView(title: "Coffee Dose", step: 3, totalSteps: 6)
                 
                 VStack(spacing: 20) {
-                    HStack(alignment: .bottom) {
-                        TextField("18", text: $state.dose)
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.center)
-                            .textFieldStyle(PlainTextFieldStyle())
+                    Text("How much coffee did you use?")
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                    
+                    VStack(spacing: 20) {
+                        HStack(alignment: .bottom) {
+                            TextField("18", text: $state.dose)
+                                .font(.system(size: 48, weight: .bold, design: .rounded))
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.center)
+                                .textFieldStyle(PlainTextFieldStyle())
+                            
+                            Text("g")
+                                .font(.title)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
                         
-                        Text("g")
-                            .font(.title)
+                        Text("Typical range: 16-20g")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
-                    
-                    Text("Typical range: 16-20g")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
+                
+                Spacer()
             }
+            .padding()
             
-            Spacer()
-            
-            NavigationButtons(onBack: onBack, onNext: onNext, nextDisabled: state.dose.isEmpty)
+            VStack {
+                Spacer()
+                NavigationButtons(onBack: onBack, onNext: onNext, nextDisabled: state.dose.isEmpty)
+                    .padding()
+                    .background(Color(.systemBackground))
+            }
         }
-        .padding()
     }
 }
 
@@ -914,112 +931,294 @@ struct YieldView: View {
     }
     
     var body: some View {
-        VStack(spacing: 30) {
-            HeaderView(title: "Shot Yield", step: 5, totalSteps: 6)
-            
-            VStack(spacing: 20) {
-                Text("How much espresso did you get?")
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+        ZStack {
+            VStack(spacing: 30) {
+                HeaderView(title: "Shot Yield", step: 5, totalSteps: 6)
                 
                 VStack(spacing: 20) {
-                    HStack(alignment: .bottom) {
-                        TextField("36", text: $state.yield)
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.center)
-                            .textFieldStyle(PlainTextFieldStyle())
-                        
-                        Text("g")
-                            .font(.title)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                    Text("How much espresso did you get?")
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
                     
-                    if let ratio = extractionRatio {
-                        VStack(spacing: 5) {
-                            Text("Extraction Ratio")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Text(String(format: "%.2f", ratio))
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundColor(.blue)
+                    VStack(spacing: 20) {
+                        HStack(spacing: 20) {
+                            // Left side: Yield input
+                            VStack(spacing: 8) {
+                                HStack(alignment: .bottom) {
+                                    TextField("36", text: $state.yield)
+                                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                                        .keyboardType(.decimalPad)
+                                        .multilineTextAlignment(.center)
+                                        .textFieldStyle(PlainTextFieldStyle())
+                                    
+                                    Text("g")
+                                        .font(.title)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(12)
+                                
+                                Text("Typical range: 30-40g")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            // Right side: Extraction ratio (always visible)
+                            VStack(spacing: 5) {
+                                VStack(spacing: 5) {
+                                    Text("Extraction Ratio")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    if let ratio = extractionRatio {
+                                        Text(String(format: "%.2f", ratio))
+                                            .font(.title)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.blue)
+                                    } else {
+                                        Text("--")
+                                            .font(.title)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(12)
+                                
+                                Text("Ideal ratio: ~2")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                        .padding()
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(12)
                     }
-                    
-                    Text("Typical range: 30-40g")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
+                
+                Spacer()
             }
+            .padding()
             
-            Spacer()
-            
-            NavigationButtons(onBack: onBack, onNext: onNext, nextDisabled: state.yield.isEmpty)
+            VStack {
+                Spacer()
+                NavigationButtons(onBack: onBack, onNext: onNext, nextDisabled: state.yield.isEmpty)
+                    .padding()
+                    .background(Color(.systemBackground))
+            }
         }
-        .padding()
     }
 }
 
-// Page 6: Taste Notes
+// Page 6: Flavor Compass
 struct TasteNotesView: View {
     @ObservedObject var state: ShotCreationState
     let onFinish: () -> Void
     let onBack: () -> Void
     
     var body: some View {
-        VStack(spacing: 30) {
-            HeaderView(title: "Taste Notes", step: 6, totalSteps: 6)
-            
-            VStack(spacing: 20) {
-                Text("How did your shot taste?")
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+        ZStack {
+            VStack(spacing: 30) {
+                HeaderView(title: "Flavor Profile", step: 6, totalSteps: 6)
                 
-                VStack(spacing: 15) {
-                    TextField("Describe the taste, aroma, and overall experience...", text: $state.tasteNotes, axis: .vertical)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .lineLimit(5...10)
-                        .frame(minHeight: 120)
-                    
-                    Text("Optional: Add notes about sweetness, acidity, body, or any flavors you noticed")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                VStack(spacing: 20) {
+                    Text("How did your shot taste?")
+                        .font(.headline)
                         .multilineTextAlignment(.center)
-                }
-            }
-            
-            Spacer()
-            
-            VStack(spacing: 15) {
-                Button(action: onFinish) {
-                    Text("Save Shot")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                    
+                    VStack(spacing: 20) {
+                        FlavorCompassView(flavorProfile: $state.flavorProfile)
+                        
+                        Text(state.flavorProfile.description)
+                            .font(.title3)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        
+                        Text("Drag the needle to describe your espresso's flavor")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
                 }
                 
-                Button(action: onBack) {
-                    Text("Back")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                Spacer()
+            }
+            .padding()
+            
+            VStack {
+                Spacer()
+                HStack(spacing: 15) {
+                    Button(action: onBack) {
+                        Text("Back")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.gray)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    
+                    Button(action: onFinish) {
+                        Text("Save Shot")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
                 }
+                .padding()
+                .background(Color(.systemBackground))
             }
         }
-        .padding()
+    }
+}
+
+struct FlavorCompassView: View {
+    @Binding var flavorProfile: FlavorProfile
+    @State private var isDragging = false
+    
+    private let compassSize: CGFloat = 250
+    private let needleLength: CGFloat = 100
+    
+    var body: some View {
+        ZStack {
+            // Background flavor wheel with gradients
+            ZStack {
+                // Base circle
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            gradient: Gradient(colors: [
+                                Color.white.opacity(0.8),
+                                Color.yellow.opacity(0.3),
+                                Color.orange.opacity(0.5),
+                                Color.red.opacity(0.6)
+                            ]),
+                            center: .center,
+                            startRadius: 20,
+                            endRadius: compassSize/2
+                        )
+                    )
+                    .frame(width: compassSize, height: compassSize)
+                
+                // Horizontal gradient overlay (sour to bitter)
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.green.opacity(0.6), // Sour (left)
+                                Color.clear,
+                                Color.brown.opacity(0.6)  // Bitter (right)
+                            ]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: compassSize, height: compassSize)
+                    .clipShape(Circle())
+                
+                // Vertical gradient overlay (light to dark)
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.yellow.opacity(0.4), // Light (top)
+                                Color.clear,
+                                Color.black.opacity(0.4)   // Dark (bottom)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: compassSize, height: compassSize)
+                    .clipShape(Circle())
+                
+                // Border
+                Circle()
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 2)
+                    .frame(width: compassSize, height: compassSize)
+            }
+            
+            // Axis labels
+            VStack {
+                Spacer()
+                
+                Text("DARK")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.secondary)
+                    .offset(y: compassSize/2 + 20)
+            }
+            .frame(height: compassSize + 40)
+            
+            HStack {
+                Text("SOUR")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.secondary)
+                    .offset(x: -compassSize/2 - 35)
+                
+                Spacer()
+                
+                Text("BITTER")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.secondary)
+                    .offset(x: compassSize/2 + 35)
+            }
+            .frame(width: compassSize + 70)
+            
+            // Center dot
+            Circle()
+                .fill(Color.black.opacity(0.3))
+                .frame(width: 8, height: 8)
+            
+            // Needle
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 0))
+                path.addLine(to: CGPoint(
+                    x: flavorProfile.x * needleLength,
+                    y: -flavorProfile.y * needleLength
+                ))
+            }
+            .stroke(Color.red, lineWidth: 3)
+            .shadow(color: .black.opacity(0.3), radius: 2, x: 1, y: 1)
+            
+            // Needle tip (draggable)
+            Circle()
+                .fill(Color.red)
+                .frame(width: 20, height: 20)
+                .shadow(color: .black.opacity(0.3), radius: 2, x: 1, y: 1)
+                .offset(
+                    x: flavorProfile.x * needleLength,
+                    y: -flavorProfile.y * needleLength
+                )
+                .scaleEffect(isDragging ? 1.2 : 1.0)
+                .animation(.easeInOut(duration: 0.1), value: isDragging)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            isDragging = true
+                            let translation = value.translation
+                            let distance = sqrt(translation.width * translation.width + translation.height * translation.height)
+                            
+                            // Limit the needle to stay within the circle
+                            let maxDistance = min(distance, needleLength)
+                            let angle = atan2(translation.height, translation.width)
+                            
+                            let newX = cos(angle) * maxDistance / needleLength
+                            let newY = -sin(angle) * maxDistance / needleLength
+                            
+                            flavorProfile = FlavorProfile(x: newX, y: newY)
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                        }
+                )
+        }
+        .frame(width: compassSize + 80, height: compassSize + 60)
     }
 }
 
@@ -1353,12 +1552,17 @@ struct ShotRowView: View {
                 }
             }
             
-            if !shot.tasteNotes.isEmpty {
-                Text(shot.tasteNotes)
+            HStack {
+                Text("Taste:")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .italic()
-                    .lineLimit(2)
+                
+                Text(shot.flavorProfile.description)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+                    .fontWeight(.medium)
+                
+                Spacer()
             }
         }
         .padding()
