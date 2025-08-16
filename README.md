@@ -21,7 +21,7 @@ A SwiftUI app for home baristas to track and analyze their espresso shots.
 - **Bean Selection**: Choose from your saved beans when recording shots
 - **Freshness Tracking**: Automatic calculation of days since roast with freshness indicators
 - **Bean Details**: Each bean stores roast level, origin, and roast date information
-- **Delete Beans**: Remove beans you no longer use
+- **Swipe-to-Delete**: Remove beans with a simple left swipe gesture (iOS-style)
 - **Visual Indicators**: Color-coded roast levels and freshness status
 - **Smart Input**: Each step focuses on one piece of information for better UX
 
@@ -30,8 +30,12 @@ A SwiftUI app for home baristas to track and analyze their espresso shots.
 2. **Page 2 - Grind Setting**: Adjust grind setting from 1-10 with slider  
 3. **Page 3 - Dose**: Enter coffee input weight in grams
 4. **Page 4 - Shot Timer**: Built-in timer for timing your espresso shot
-5. **Page 5 - Yield**: Enter output weight with real-time extraction ratio
-6. **Page 6 - Taste Notes**: Optional notes about flavor and experience
+5. **Page 5 - Yield**: Enter output weight with side-by-side extraction ratio display and ideal ratio guidance
+6. **Page 6 - Flavor Compass**: Interactive circular interface to pinpoint espresso taste profile
+   - Drag needle across color-coded wheel to describe flavor
+   - Horizontal axis: Sour (left) → Bitter (right)
+   - Vertical axis: Light (top) → Dark (bottom)
+   - Real-time flavor description updates
 
 ### Navigation & UX
 - **Progress Indicator**: Visual progress bar showing current step (both shot and bean flows)
@@ -80,4 +84,4 @@ A SwiftUI app for home baristas to track and analyze their espresso shots.
 3. Build and run the app
 4. Start recording your espresso shots!
 
-The app is designed to be simple and focused, helping home baristas develop their skills through consistent tracking and analysis of their shots. 
+The app is designed to be simple and focused, helping home baristas develop their skills through consistent tracking and analysis of their shots. # espresso_trainer_IOS
